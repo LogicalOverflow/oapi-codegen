@@ -30,6 +30,10 @@ type Schema struct {
 	UnionElements []UnionElement // Possible elements of oneOf/anyOf union
 	Discriminator *Discriminator // Describes which value is stored in a union
 
+	// True if the field is encoded as a string; adds "string" option to the
+	// field
+	StringifedJSON bool
+
 	// If this is set, the schema will declare a type via alias, eg,
 	// `type Foo = bool`. If this is not set, we will define this type via
 	// type definition `type Foo bool`
@@ -639,6 +643,18 @@ func oapiSchemaToGoType(schema *openapi3.Schema, path []string, outSchema *Schem
 			outSchema.GoType = "openapi_types.UUID"
 		case "binary":
 			outSchema.GoType = "openapi_types.File"
+		case "int64", "int32", "int16", "int8", "int", "uint64", "uint32", "uint16", "uint8", "uint":
+			outSchema.GoType = f
+			outSchema.StringifedJSON = true
+		case "double":
+			outSchema.GoType = "float64"
+			outSchema.StringifedJSON = true
+		case "float":
+			outSchema.GoType = "float32"
+			outSchema.StringifedJSON = true
+		case "boolean":
+			outSchema.GoType = "bool"
+			outSchema.StringifedJSON = true
 		default:
 			// All unrecognized formats are simply a regular string.
 			outSchema.GoType = "string"
@@ -724,16 +740,18 @@ func GenFieldsFromProperties(props []Property) []string {
 
 		fieldTags := make(map[string]string)
 
-		if !omitEmpty {
-			fieldTags["json"] = p.JsonFieldName
+		fieldTags["json"] = p.JsonFieldName
+		if p.NeedsFormTag {
+			fieldTags["form"] = p.JsonFieldName
+		}
+		if omitEmpty {
+			fieldTags["json"] += ",omitempty"
 			if p.NeedsFormTag {
-				fieldTags["form"] = p.JsonFieldName
+				fieldTags["form"] += ",omitempty"
 			}
-		} else {
-			fieldTags["json"] = p.JsonFieldName + ",omitempty"
-			if p.NeedsFormTag {
-				fieldTags["form"] = p.JsonFieldName + ",omitempty"
-			}
+		}
+		if p.Schema.StringifedJSON {
+			fieldTags["json"] += ",string"
 		}
 
 		// Support x-go-json-ignore
